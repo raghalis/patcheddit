@@ -1,0 +1,42 @@
+name: Build fork bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - gallery-fix
+
+jobs:
+  build:
+    name: Build and publish
+    permissions:
+      contents: write
+      packages: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :patches:buildAndroid --no-daemon
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d ' ')
+          ls -la patches/build/libs/
+          FILE=$(ls patches/build/libs/patches-*.mpp | grep -v -e sources -e javadoc | head -1)
+          cp "$FILE" "patches-$VERSION.mpp"
+          gh release delete "v$VERSION" --yes --cleanup-tag || true
+          gh release create "v$VERSION" "patches-$VERSION.mpp" \
+            --target "$GITHUB_SHA" --title "v$VERSION (gallery fix)" \
+            --notes "Patcheddit with the Fix galleries patch for Reddit is Fun."
